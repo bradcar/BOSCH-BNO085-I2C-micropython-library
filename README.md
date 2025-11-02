@@ -1,7 +1,7 @@
 # BOSCH-BNO085-I2C-micropython-library
 ## Micropython I2C library for 9 dof BOSCH BNO08X sensors
 
-- 100% inspired by the original Adafruit Circuitpython I2C library for BNO08X
+- 100% inspired by the original Adafruit CircuitPython I2C library for BNO08X
 - Copyright (c) 2020 Bryan Siepert for Adafruit Industries
 
 ## This library is working with:
@@ -39,15 +39,18 @@ but can be completed by optional conditions
 
 **Optional :**
 
-- address : will find by itself, but if using 2 BNO08x you need to define it
-- rst_pin : if a pin identifier (Pin number, not Pin object) is defined, will do a hard reset, otherwise, soft reset will be used
-- debug : print logs from driver 
+- address : will i2c find by itself, but if using 2 BNO08x you need to define it
+- rst_pin : required to enable sensor hard reset. Define a pin number (not Pin object). If not defined, a soft reset will be used.
+- int_pin : required to time synchronize sensor and host to enable microsecond accuracy timestamps. Define a pin number (not Pin object). Not required if only 200 millisecond host-based timestamps are adequate, or if timestamps are not required.
+- debug : print detailed logs from driver 
 
-**Enable the sensor reports**
+## Enable the sensor reports
+
+Before getting sensor results the reports must be enabled:
 
     bno.enable_feature(BNO_REPORT_ACCELEROMETER)  # for accelerometer
     
-Available sensors reports are :
+Primary sensors reports:
 
         BNO_REPORT_ACCELEROMETER
         BNO_REPORT_GYROSCOPE
@@ -57,15 +60,13 @@ Available sensors reports are :
         BNO_REPORT_GRAVITY
         BNO_REPORT_GAME_ROTATION_VECTOR
         BNO_REPORT_GEOMAGNETIC_ROTATION_VECTOR
-        BNO_REPORT_PRESSURE
-        BNO_REPORT_AMBIENT_LIGHT
-        BNO_REPORT_HUMIDITY
-        BNO_REPORT_PROXIMITY
-        BNO_REPORT_TEMPERATURE
         BNO_REPORT_STEP_COUNTER
         BNO_REPORT_SHAKE_DETECTOR
         BNO_REPORT_STABILITY_CLASSIFIER
         BNO_REPORT_ACTIVITY_CLASSIFIER
+
+Additional reports:
+
         BNO_REPORT_RAW_ACCELEROMETER
         BNO_REPORT_RAW_GYROSCOPE
         BNO_REPORT_RAW_MAGNETOMETER
@@ -75,26 +76,34 @@ Available sensors reports are :
         BNO_REPORT_ARVR_STABILIZED_GAME_ROTATION_VECTOR
         BNO_REPORT_GYRO_INTEGRATED_ROTATION_VECTOR
 
-Yet unsupported sensors reports are :
+Yet nsupported sensors reports:
 
         BNO_REPORT_SIGNIFICANT_MOTION
         BNO_REPORT_SAR
-        BNO_REPORT_STEP_DETECTOR
-        BNO_REPORT_SHAKE_DETECTOR
         BNO_REPORT_FLIP_DETECTOR
         BNO_REPORT_PICKUP_DETECTOR
-        BNO_REPORT_STABILITY_DETECTOR
         BNO_REPORT_SLEEP_DETECTOR
         BNO_REPORT_TILT_DETECTOR
         BNO_REPORT_POCKET_DETECTOR
         BNO_REPORT_CIRCLE_DETECTOR
         BNO_REPORT_HEART_RATE_MONITOR
-    
-Sensors values can be reached with
+
+These reports require additional sensors, and have not been tested:
+
+        BNO_REPORT_PRESSURE
+        BNO_REPORT_AMBIENT_LIGHT
+        BNO_REPORT_HUMIDITY
+        BNO_REPORT_PROXIMITY
+        BNO_REPORT_TEMPERATUR
+
+
+## Getting the sensor results:
+
+Sensors values can be reached with:
 
     accel_x, accel_y, accel_z = bno.acc
 
-Roll Tilt and Pan can be obtained with
+Roll Tilt and Pan can be obtained with:
 
     roll, tilt, pan = bno.euler
 
@@ -116,15 +125,6 @@ See examples directory for sample code. The following functions use on-chip sens
     stability_str = bno.stability_classif  # string of stability classification returned
     activity_str = bno.activity_classif  # string of activity classification returned
 
-The following functions provide raw values directly from individual sensors:
-
-    # raw data sensor tuple of x,y,z, float and time_stamp int returned
-    x, y, z, usec = bno.acc_raw 
-    x, y, z, usec = bno.mag_raw
-    
-    # raw data gyro tuple of x,y,z, celsius float, and time_stamp int returned
-    x, y, z, temp_c, usec = bno.gyro_raw
-    
 The following functions can be used to control and test sensor:
 
     bno.tare  # tare the sensor
@@ -135,3 +135,26 @@ The following functions can be used to control and test sensor:
     bno.calibration_save  # Save calibration
 
     status = bno.ready  # test sensor status, boolean returned
+
+The following functions provide raw values directly from individual sensors, they lack the advanced on-sensor software that make the above functions more accurate:
+
+    # raw data sensor tuple of x,y,z, float and time_stamp int returned
+    x, y, z, usec = bno.acc_raw 
+    x, y, z, usec = bno.mag_raw
+    
+    # raw data gyro tuple of x,y,z, celsius float, and time_stamp int returned
+    x, y, z, temp_c, usec = bno.gyro_raw
+
+
+## References
+
+The BNO085 and BNO086 9-axis sensors are made by Ceva (https://www.ceva-ip.com). They are based on Bosch hardware but use Hillcrest Labs’ proprietary sensor fusion software. BNO086 is backwards compatible with BNO085 and both are pin-for-pin replacements for Bosch Sensortec’s discontinued BNO055 and BMF055 sensors.
+
+https://www.ceva-ip.com/wp-content/uploads/BNO080_085-Product-Brief.pdf
+
+https://www.ceva-ip.com/wp-content/uploads/BNO080_085-Datasheet.pdf
+
+https://cdn.sparkfun.com/assets/4/d/9/3/8/SH-2-Reference-Manual-v1.2.pdf
+
+Bosch has a new 6-axis IMU BHI385 (announced June 2025) that can be paired with BMM350 3-axis Geomagnetic sensor.
+
