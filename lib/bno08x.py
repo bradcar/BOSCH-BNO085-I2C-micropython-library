@@ -1,6 +1,6 @@
 # BNO08X Micropython I2C Library by Dobodu
 #
-# Adapted from original Adafruit CircuitPyhton library
+# Adapted from original Adafruit CircuitPython library
 # SPDX-FileCopyrightText: Copyright (c) 2020 Bryan Siepert for Adafruit Industries
 # SPDX-License-Identifier: MIT
 #
@@ -270,7 +270,7 @@ INITIAL_REPORTS = {
     BNO_REPORT_ROTATION_VECTOR: (0.0, 0.0, 0.0, 0.0),
     BNO_REPORT_GAME_ROTATION_VECTOR: (0.0, 0.0, 0.0, 0.0),
     BNO_REPORT_GEOMAGNETIC_ROTATION_VECTOR: (0.0, 0.0, 0.0, 0.0),
-    # Gyro is a 5 tuple, celsius float and int timestamp for last two entry
+    # Gyro is a 5 tuple, Celsius float and int timestamp for last two entry
     BNO_REPORT_RAW_GYROSCOPE: (0, 0, 0, 0.0, 0),
     # Acc & Mag are 4-tuple, int timestamp for last entry
     BNO_REPORT_RAW_ACCELEROMETER: (0, 0, 0, 0),
@@ -747,7 +747,7 @@ class BNO08X:
         try:
             return self._readings[BNO_REPORT_MAGNETOMETER]
         except KeyError:
-            raise RuntimeError("No magfield report found, is it enabled?") from None
+            raise RuntimeError("No magnetometer report found, is it enabled?") from None
 
     @property
     def mag_raw(self):
@@ -758,7 +758,7 @@ class BNO08X:
             raw_magnetic = self._readings[BNO_REPORT_RAW_MAGNETOMETER]
             return raw_magnetic
         except KeyError:
-            raise RuntimeError("No raw magnetic report found, is it enabled?") from None
+            raise RuntimeError("No raw magnetometer report found, is it enabled?") from None
 
     @property
     def quaternion(self):
@@ -778,7 +778,7 @@ class BNO08X:
             # q = self._readings[BNO_REPORT_ROTATION_VECTOR]
             q = self._readings[self._quaternion_euler_vector]
         except KeyError:
-            raise RuntimeError("No quaternion report found, is it enabled?") from None
+            raise RuntimeError("No quaternion Euler report found, is it enabled?") from None
 
         jsqr = q[1] * q[1]
         t0 = +2.0 * (q[3] * q[0] + q[1] * q[2])
@@ -1111,6 +1111,7 @@ class BNO08X:
             else:
                 raise RuntimeError("Unable to save calibration data")
 
+    # Handle reports with specific requirements and return, then general case
     def _process_report(self, report_id, report_bytes):
         self._dbg("PROCESSING REPORTS...")
         if report_id >= 0xF0:
@@ -1125,6 +1126,40 @@ class BNO08X:
                     outstr += "\n\t\t\t\t\t[0x{:02X}] ".format(packet_index)
                 outstr += "0x{:02X} ".format(packet_byte)
             print(outstr)
+
+        if report_id == BASE_TIMESTAMP:  # 0xFB
+            report_id = report_bytes[0]  # TODO BRC is this needed?
+
+            base_delta_100us = unpack_from("<i", report_bytes, 1)[0]
+            # Convert to microseconds
+            base_delta_us = base_delta_100us * 100
+
+            if self._debug:
+                print(f"\t\t\t\tBase Timestamp Reference: delta={base_delta_100us} (100µs ticks) "
+                      f"→ {base_delta_us} µs")
+
+            # Store for later use (e.g., to adjust future sensor timestamps)
+            self._base_timestamp_ref_us = base_delta_us
+
+            # TODO: BRC CHECK return a structured result
+            sensor_data = (report_id, base_delta_us)
+            self._readings[report_id] = sensor_data
+
+            return
+
+        if report_id == TIMESTAMP_REBASE:  # 0xFA
+            # 32-bit signed delta relative to previous base
+            rebase_delta_100us = unpack_from("<i", report_bytes, 1)[0]
+            rebase_delta_us = rebase_delta_100us * 100
+
+            if self._debug:
+                print(f"\t\t\t\tTimestamp Rebase: delta={rebase_delta_100us} (100µs ticks) "
+                      f"→ {rebase_delta_us} µs")
+
+            # Adjust current reference
+            self._base_timestamp_ref_us += rebase_delta_us
+            self._readings[report_id] = (report_id, rebase_delta_us)
+            return
 
         if report_id == BNO_REPORT_STEP_COUNTER:
             # fixed typo
@@ -1275,8 +1310,13 @@ class BNO08X:
         else:
             format_str = "<h"
         results = []
-        accuracy = unpack_from("<B", report_bytes, 2)[0]
-        accuracy &= 0b11
+        byte2 = unpack_from("<B", report_bytes, 2)[0]
+        byte3 = unpack_from("<B", report_bytes, 3)[0]
+        accuracy = byte2 & 0b11
+        # Extract delay upper 6 bits (bits 7:2), combine and adjust from 100us units
+        delay_upper = (byte2 >> 2) & 0b111111
+        delay_raw = (delay_upper << 8) | byte3
+        delay_us = delay_raw * 100
 
         for _offset_idx in range(count):
             total_offset = data_offset + (_offset_idx * 2)
@@ -1285,9 +1325,11 @@ class BNO08X:
             results.append(scaled_data)
         sensor_data = tuple(results)
         if self._debug:
-            outstr = "\t\t\t\tReading for %s %s Accuracy %d" % (REPORTS_DICTIONARY[report_id], str(sensor_data),
-                                                                accuracy)
+            outstr = "\t\t\t\tReading for %s %s Accuracy %d Delta %d" % (REPORTS_DICTIONARY[report_id],
+                                                                         str(sensor_data),
+                                                                         accuracy, delay_us)
             print(outstr)
+        # TODO: BRC  Determine how to return report delay for all reports?  self._delay_us = delay_us
         if report_id == BNO_REPORT_MAGNETOMETER:
             self._magnetometer_accuracy = accuracy
         # TODO: FIXME; Sensor reports are batched in a LIFO which means that multiple reports
@@ -1435,3 +1477,4 @@ class BNO08X:
     def _dbg(self, *args, **kwargs):
         if self._debug:
             print("DBG:\t", LIBNAME, ":\t", *args, **kwargs)
+
