@@ -22,7 +22,7 @@ from ustruct import unpack_from, pack_into
 from utime import ticks_ms, sleep_ms, ticks_diff
 
 LIBNAME = "BNO08X"
-LIBVERSION = "1.0.8"
+LIBVERSION = "1.0.9"
 
 # BNO08X SETUP
 BNO08X_DEFAULT_ADDRESS = (0x4A, 0x4B)
@@ -335,7 +335,7 @@ REPORTS_DICTIONARY = {
     0xF7: "FRS_WRITE_REQUEST",
     0xF8: "PRODUCT_ID_RESPONSE",
     0xF9: "PRODUCT_ID_REQUEST",
-    0xFA: "TIMESTAMP_REBASE",
+    0xFA: "REBASE_TIMESTAMP",
     0xFB: "BASE_TIMESTAMP",
     0xFC: "GET_FEATURE_RESPONSE",
     0xFD: "SET_FEATURE_COMMAND",
@@ -1090,8 +1090,50 @@ class BNO08X:
                 outstr += "\n\t\t\t\t\tFeat Rep. Id\t\t%d" % feature_report_id
                 outstr += "\n\t\t\t\t\tReadings    \t\t%s" % str(self._readings)
                 print(outstr)
+
         if report_id == COMMAND_RESPONSE:
             self._handle_command_response(report_bytes)
+
+        if report_id == BASE_TIMESTAMP:  # 0xFB
+            report_id = report_bytes[0]  # TODO BRC is this needed?
+
+            base_delta_100us = unpack_from("<i", report_bytes, 1)[0]
+            # Convert to microseconds
+            base_delta_us = base_delta_100us * 100
+
+            if self._debug:
+                print(f"\t\t\t\tBase Timestamp Reference: delta={base_delta_100us} (100µs ticks) "
+                      f"→ {base_delta_us} µs")
+# BRC Debug
+            print(f"BASE_TIMESTAMP: delta={base_delta_100us}= {base_delta_us/1000:.1f} ms")
+
+            # Store for later use (e.g., to adjust future sensor timestamps)
+            self._base_timestamp_ref_us = base_delta_us
+
+            # TODO: BRC CHECK return a structured result
+            sensor_data = (report_id, base_delta_us)
+            self._readings[report_id] = sensor_data
+
+            return
+
+        if report_id == REBASE_TIMESTAMP:  # 0xFA
+            # 32-bit signed delta relative to previous base
+            rebase_delta_100us = unpack_from("<i", report_bytes, 1)[0]
+            rebase_delta_us = rebase_delta_100us * 100
+
+            if self._debug:
+                print(f"\t\t\t\tTimestamp Rebase: delta={rebase_delta_100us} (100µs ticks) "
+                      f"→ {rebase_delta_us} µs")
+
+# BRC Debug
+            print(f"BASE_TIMESTAMP Report: delta={rebase_delta_100us} (100µs ticks) "
+                  f" to {rebase_delta_us} µs")
+
+            # Adjust current reference
+            self._base_timestamp_ref_us += rebase_delta_us
+            self._readings[report_id] = (report_id, rebase_delta_us)
+            return
+
 
     def _handle_command_response(self, report_bytes):
         # CMD response report:
@@ -1126,40 +1168,6 @@ class BNO08X:
                     outstr += "\n\t\t\t\t\t[0x{:02X}] ".format(packet_index)
                 outstr += "0x{:02X} ".format(packet_byte)
             print(outstr)
-
-        if report_id == BASE_TIMESTAMP:  # 0xFB
-            report_id = report_bytes[0]  # TODO BRC is this needed?
-
-            base_delta_100us = unpack_from("<i", report_bytes, 1)[0]
-            # Convert to microseconds
-            base_delta_us = base_delta_100us * 100
-
-            if self._debug:
-                print(f"\t\t\t\tBase Timestamp Reference: delta={base_delta_100us} (100µs ticks) "
-                      f"→ {base_delta_us} µs")
-
-            # Store for later use (e.g., to adjust future sensor timestamps)
-            self._base_timestamp_ref_us = base_delta_us
-
-            # TODO: BRC CHECK return a structured result
-            sensor_data = (report_id, base_delta_us)
-            self._readings[report_id] = sensor_data
-
-            return
-
-        if report_id == TIMESTAMP_REBASE:  # 0xFA
-            # 32-bit signed delta relative to previous base
-            rebase_delta_100us = unpack_from("<i", report_bytes, 1)[0]
-            rebase_delta_us = rebase_delta_100us * 100
-
-            if self._debug:
-                print(f"\t\t\t\tTimestamp Rebase: delta={rebase_delta_100us} (100µs ticks) "
-                      f"→ {rebase_delta_us} µs")
-
-            # Adjust current reference
-            self._base_timestamp_ref_us += rebase_delta_us
-            self._readings[report_id] = (report_id, rebase_delta_us)
-            return
 
         if report_id == BNO_REPORT_STEP_COUNTER:
             # fixed typo
@@ -1314,7 +1322,7 @@ class BNO08X:
         byte3 = unpack_from("<B", report_bytes, 3)[0]
         accuracy = byte2 & 0b11
         # Extract delay upper 6 bits (bits 7:2), combine and adjust from 100us units
-        delay_upper = (byte2 >> 2) & 0b111111
+        delay_upper = (byte2 >> 2) & 0x3F
         delay_raw = (delay_upper << 8) | byte3
         delay_us = delay_raw * 100
 
@@ -1329,9 +1337,14 @@ class BNO08X:
                                                                          str(sensor_data),
                                                                          accuracy, delay_us)
             print(outstr)
+
+# BRC Debug
+        print(f"Report: id={report_id} n={REPORTS_DICTIONARY[report_id]} d={str(sensor_data)} acc={accuracy} delay={delay_us/1000:.1f} ms")
+
         # TODO: BRC  Determine how to return report delay for all reports?  self._delay_us = delay_us
         if report_id == BNO_REPORT_MAGNETOMETER:
             self._magnetometer_accuracy = accuracy
+
         # TODO: FIXME; Sensor reports are batched in a LIFO which means that multiple reports
         # for the same type will end with the oldest/last being kept and the other
         # newer reports thrown away
@@ -1477,4 +1490,3 @@ class BNO08X:
     def _dbg(self, *args, **kwargs):
         if self._debug:
             print("DBG:\t", LIBNAME, ":\t", *args, **kwargs)
-
