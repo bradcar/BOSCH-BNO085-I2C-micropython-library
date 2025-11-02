@@ -94,7 +94,7 @@ These reports require additional sensors, and have not been tested:
         BNO_REPORT_AMBIENT_LIGHT
         BNO_REPORT_HUMIDITY
         BNO_REPORT_PROXIMITY
-        BNO_REPORT_TEMPERATUR
+        BNO_REPORT_TEMPERATURE
 
 
 ## Getting the sensor results:
