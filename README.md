@@ -97,7 +97,6 @@ I2C interface and can be accessed by these reports. They have not been tested:
         BNO_REPORT_PROXIMITY
         BNO_REPORT_TEMPERATURE
 
-
 ## Getting the sensor results:
 
 Sensors values can be reached with:
@@ -146,6 +145,9 @@ The following functions provide raw values directly from individual sensors, the
     # raw data gyro tuple of x,y,z, celsius float, and time_stamp int returned
     x, y, z, temp_c, usec = bno.gyro_raw
 
+## i2c Issues with speed and data quality
+
+The BNO080, BNO085, and BNO086 all use **_non-standard clock stretching_** on the i2c. This can cause a variety of issues including report errors and the need to restart sensor. Clock stretching interferes with various chips (ex: RP2) in different ways. If you see sporadic results this may be part of the issue (BNO08X Datasheet 1000-3927 v1.17, page 15).
 
 ## References
 
