@@ -556,19 +556,24 @@ class BNO08X:
         self.initialize()
 
     def initialize(self):
-        # Initialize the sensor
+        if self._rst_pin is not None:
+            self.hard_reset()
+            init_str = "hard reset"
+        else:
+            self.soft_reset()
+            init_str = "soft reset"
+
+        # Try checking the ID up to 3 times
         for _ in range(3):
-            if (self._rst_pin is not None):
-                self.hard_reset()
-            else:
-                self.soft_reset()
             try:
                 if self._check_id():
-                    break
-            except:
-                sleep_ms(500)
-        else:
-            raise RuntimeError("Could not initialize")
+                    return
+            except OSError:
+                pass
+            sleep_ms(500)
+
+        raise RuntimeError(f"did not get valid _check_id after 3 checks after {init_str}")
+
 
     def int_handle(self, pin):
         if not pin.value() and not self.int_locked:
@@ -614,7 +619,7 @@ class BNO08X:
 
     # Enable a given feature of the BNO08x (See Hillcrest 6.5.4)
     # TODO: add docs for available features
-    # TODO2: Function does the minimum and should first imports all the bits for the given feature
+    # TODO: Function does the minimum and should first imports all the bits for the given feature
     # before writing (ex : Feature flags and so on...
     def enable_feature(self, feature_id, freq=None):
         self._dbg("ENABLING FEATURE ID...", feature_id)
@@ -1073,8 +1078,8 @@ class BNO08X:
         if report_id == SHTP_REPORT_ID_RESPONSE:
             report_id, sw_major, sw_minor, sw_part_number, sw_build_number, sw_patch = unpack_from("<HBBIIH",
                                                                                                    report_bytes)
-            if report_id != SHTP_REPORT_ID_RESPONSE:
-                raise AttributeError("Wrong report id for sensor id: %s" % hex(buffer[0]))
+#             if report_id != SHTP_REPORT_ID_RESPONSE:
+#                 raise AttributeError("Wrong report id for sensor id: %s" % hex(buffer[0]))
             self._dbg("\tFROM PACKET SLICE:")
             self._dbg("\t*** Part Number: %d" % sw_part_number)
             self._dbg("\t*** Software Version: %d.%d.%d" % (sw_major, sw_minor, sw_patch))

@@ -76,7 +76,7 @@ Additional reports:
         BNO_REPORT_ARVR_STABILIZED_GAME_ROTATION_VECTOR
         BNO_REPORT_GYRO_INTEGRATED_ROTATION_VECTOR
 
-Yet nsupported sensors reports:
+Yet to be supported sensors reports:
 
         BNO_REPORT_SIGNIFICANT_MOTION
         BNO_REPORT_SAR
@@ -88,7 +88,8 @@ Yet nsupported sensors reports:
         BNO_REPORT_CIRCLE_DETECTOR
         BNO_REPORT_HEART_RATE_MONITOR
 
-These reports require additional sensors, and have not been tested:
+BNO08X supports environmental sensors (e.g. pressure sensors, ambient light sensors) on a secondary
+I2C interface and can be accessed by these reports. They have not been tested:
 
         BNO_REPORT_PRESSURE
         BNO_REPORT_AMBIENT_LIGHT
