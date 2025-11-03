@@ -17,6 +17,7 @@
 from math import asin, atan2, degrees
 
 from collections import namedtuple
+from machine import Pin
 from micropython import const
 from ustruct import unpack_from, pack_into
 from utime import ticks_ms, sleep_ms, ticks_diff
@@ -504,7 +505,7 @@ class BNO08X:
         self._debug = debug
         self._i2c = i2c
         self._rst_pin = rst_pin
-        if self._rst_pin is not None:
+        if rst_pin != None:
             self._rst_pin.value(1)
         self._int_pin = int_pin
         self._ready = False
@@ -578,15 +579,6 @@ class BNO08X:
 
         raise RuntimeError(f"Failed to get valid ID after {reset_type} reset")
 
-    #     def int_handle(self, pin):
-    #         if not pin.value() and not self.int_locked:
-    #             self.int_locked = True  # Lock Interrupt
-    #             buff = "New BNO Message"
-    #             # if buff is not None:
-    #             #    self.int_handler(buff)
-    #         elif pin.value() and self.int_locked:
-    #             self.int_locked = False  # Unlock interrupt
-
     def int_handle(self, pin):
         if self.int_locked:
             return
@@ -620,12 +612,12 @@ class BNO08X:
         self._dbg("HARD RESETTING...")
         if self._rst_pin is None:
             return
-        #         self._rst_pin.value(1)
-        #         sleep_ms(10)
+        self._rst_pin.value(1)
+        sleep_ms(10)
         self._rst_pin.value(0)
         sleep_ms(10)
         self._rst_pin.value(1)
-        sleep_ms(220)  # Since Issue 4
+        sleep_ms(1020)  # Since Issue 4
 
     # Enable a given feature of the BNO08x (See Hillcrest 6.5.4)
     # TODO: add docs for available features
