@@ -504,6 +504,9 @@ class BNO08X:
         self._debug = debug
         self._i2c = i2c
         self._rst_pin = rst_pin
+        if self._rst_pin is not None:
+            self._rst_pin.value(1)
+        self._int_pin = int_pin
         self._ready = False
 
         # Searching for BNO08x addresses on I2C bus if not specified
@@ -522,12 +525,13 @@ class BNO08X:
         else:
             self._bno_add = address
 
-        if int_pin is not None:
-            self.int_pin = int_pin
+        if self._int_pin is not None:
             self.int_handler = int_handler
             self.int_locked = False
-            int_pin.irq(trigger=int_pin.IRQ_FALLING | int_pin.IRQ_RISING,
-                        handler=self.int_handle)
+            self._int_pin.irq(
+                trigger=Pin.IRQ_FALLING,
+                handler=self.int_handle
+            )
 
         self._dbg("INITIALISATION...")
         self._buffer = bytearray(DATA_BUFFER_SIZE)
@@ -556,33 +560,42 @@ class BNO08X:
         self.initialize()
 
     def initialize(self):
-        if self._rst_pin is not None:
+        if self._rst_pin:
             self.hard_reset()
-            init_str = "hard reset"
+            reset_type = "hardware"
         else:
             self.soft_reset()
-            init_str = "soft reset"
+            reset_type = "software"
 
-        # Try checking the ID up to 3 times
-        for _ in range(3):
+        for attempt in range(3):
             try:
                 if self._check_id():
+                    self._dbg(f"{reset_type} reset successful")
                     return
             except OSError:
                 pass
             sleep_ms(500)
 
-        raise RuntimeError(f"did not get valid _check_id after 3 checks after {init_str}")
+        raise RuntimeError(f"Failed to get valid ID after {reset_type} reset")
 
+    #     def int_handle(self, pin):
+    #         if not pin.value() and not self.int_locked:
+    #             self.int_locked = True  # Lock Interrupt
+    #             buff = "New BNO Message"
+    #             # if buff is not None:
+    #             #    self.int_handler(buff)
+    #         elif pin.value() and self.int_locked:
+    #             self.int_locked = False  # Unlock interrupt
 
     def int_handle(self, pin):
-        if not pin.value() and not self.int_locked:
-            self.int_locked = True  # Lock Interrupt
-            buff = "New BNO Message"
-            # if buff is not None:
-            #    self.int_handler(buff)
-        elif pin.value() and self.int_locked:
-            self.int_locked = False  # Unlock interrupt
+        if self.int_locked:
+            return
+        self.int_locked = True
+        try:
+            if self.int_handler:
+                self.int_handler("BNO08X interrupt")
+        finally:
+            self.int_locked = False
 
     # Reset the sensor to an initial unconfigured state
     def soft_reset(self):
@@ -607,15 +620,12 @@ class BNO08X:
         self._dbg("HARD RESETTING...")
         if self._rst_pin is None:
             return
-        from machine import Pin  # pylint:disable=import-outside-toplevel
-
-        self._reset = Pin(self._rst_pin, Pin.OUT)
-        self._reset.value(1)
+        #         self._rst_pin.value(1)
+        #         sleep_ms(10)
+        self._rst_pin.value(0)
         sleep_ms(10)
-        self._reset.value(0)
-        sleep_ms(10)
-        self._reset.value(1)
-        sleep_ms(120)  # Since Issue 4
+        self._rst_pin.value(1)
+        sleep_ms(220)  # Since Issue 4
 
     # Enable a given feature of the BNO08x (See Hillcrest 6.5.4)
     # TODO: add docs for available features
@@ -1031,7 +1041,8 @@ class BNO08X:
         start_time = ticks_ms()
         while ticks_diff(ticks_ms(), start_time) < timeout:
             if not self._data_ready:
-                print("NOT READY")
+                if self._debug:
+                    print("NOT READY")
                 continue
             new_packet = self._read_packet()
             return new_packet
@@ -1078,8 +1089,8 @@ class BNO08X:
         if report_id == SHTP_REPORT_ID_RESPONSE:
             report_id, sw_major, sw_minor, sw_part_number, sw_build_number, sw_patch = unpack_from("<HBBIIH",
                                                                                                    report_bytes)
-#             if report_id != SHTP_REPORT_ID_RESPONSE:
-#                 raise AttributeError("Wrong report id for sensor id: %s" % hex(buffer[0]))
+            #             if report_id != SHTP_REPORT_ID_RESPONSE:
+            #                 raise AttributeError("Wrong report id for sensor id: %s" % hex(buffer[0]))
             self._dbg("\tFROM PACKET SLICE:")
             self._dbg("\t*** Part Number: %d" % sw_part_number)
             self._dbg("\t*** Software Version: %d.%d.%d" % (sw_major, sw_minor, sw_patch))
@@ -1109,8 +1120,8 @@ class BNO08X:
             if self._debug:
                 print(f"\t\t\t\tBase Timestamp Reference: delta={base_delta_100us} (100µs ticks) "
                       f"→ {base_delta_us} µs")
-# BRC Debug
-            print(f"BASE_TIMESTAMP: delta={base_delta_100us}= {base_delta_us/1000:.1f} ms")
+            # BRC Debug
+            print(f"BASE_TIMESTAMP: delta={base_delta_100us}= {base_delta_us / 1000:.1f} ms")
 
             # Store for later use (e.g., to adjust future sensor timestamps)
             self._base_timestamp_ref_us = base_delta_us
@@ -1130,7 +1141,7 @@ class BNO08X:
                 print(f"\t\t\t\tTimestamp Rebase: delta={rebase_delta_100us} (100µs ticks) "
                       f"→ {rebase_delta_us} µs")
 
-# BRC Debug
+            # BRC Debug
             print(f"BASE_TIMESTAMP Report: delta={rebase_delta_100us} (100µs ticks) "
                   f" to {rebase_delta_us} µs")
 
@@ -1138,7 +1149,6 @@ class BNO08X:
             self._base_timestamp_ref_us += rebase_delta_us
             self._readings[report_id] = (report_id, rebase_delta_us)
             return
-
 
     def _handle_command_response(self, report_bytes):
         # CMD response report:
@@ -1343,8 +1353,9 @@ class BNO08X:
                                                                          accuracy, delay_us)
             print(outstr)
 
-# BRC Debug
-        print(f"Report: id={report_id} n={REPORTS_DICTIONARY[report_id]} d={str(sensor_data)} acc={accuracy} delay={delay_us/1000:.1f} ms")
+        # BRC Debug
+        print(
+            f"Report: id={report_id} n={REPORTS_DICTIONARY[report_id]} d={str(sensor_data)} acc={accuracy} delay={delay_us / 1000:.1f} ms")
 
         # TODO: BRC  Determine how to return report delay for all reports?  self._delay_us = delay_us
         if report_id == BNO_REPORT_MAGNETOMETER:
